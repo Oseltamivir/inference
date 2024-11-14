@@ -86,14 +86,24 @@ class BackendPytorch(backend.Backend):
             )
             # self.pipe.unet = torch.compile(self.pipe.unet, mode="reduce-overhead", fullgraph=True)
 
+        # Set device based on local rank if using distributed
+        if dist.is_available() and dist.is_initialized():
+            local_rank = int(os.getenv("LOCAL_RANK", "0"))
+            self.device = f"cuda:{local_rank}"
+            torch.cuda.set_device(self.device)
+
+        # Move model to device before DDP wrapping
         self.pipe.to(self.device)
         
         # Wrap individual modules with DDP
         if dist.is_available() and dist.is_initialized():
-            self.pipe.unet = DDP(self.pipe.unet, device_ids=[torch.cuda.current_device()])
-            self.pipe.text_encoder = DDP(self.pipe.text_encoder, device_ids=[torch.cuda.current_device()])
+            self.pipe.unet = DDP(self.pipe.unet, device_ids=[local_rank])
+            self.pipe.text_encoder = DDP(self.pipe.text_encoder, device_ids=[local_rank])
             if hasattr(self.pipe, 'text_encoder_2') and self.pipe.text_encoder_2 is not None:
-                self.pipe.text_encoder_2 = DDP(self.pipe.text_encoder_2, device_ids=[torch.cuda.current_device()])
+                self.pipe.text_encoder_2 = DDP(self.pipe.text_encoder_2, device_ids=[local_rank])
+            
+            # Make sure all processes are synced
+            dist.barrier()
         
         self.negative_prompt_tokens = self.pipe.tokenizer(
             self.convert_prompt(self.negative_prompt, self.pipe.tokenizer),

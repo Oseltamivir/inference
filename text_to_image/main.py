@@ -335,13 +335,17 @@ class QueueRunner(RunnerBase):
 def main():
     args = get_args()
 
-    # Remove or update initialization if not using distributed arguments
-    # dist.init_process_group(backend='nccl', init_method=dist_url,
-    #                         world_size=world_size, rank=rank)
-
-    # Set device based on local rank
-    # local_rank = int(os.getenv("LOCAL_RANK", "0"))
-    # torch.cuda.set_device(local_rank)
+    # Initialize distributed environment
+    if torch.cuda.is_available():
+        # Initialize process group
+        dist.init_process_group(backend='nccl')
+        
+        # Get local rank for device assignment
+        local_rank = int(os.getenv("LOCAL_RANK", "0"))
+        torch.cuda.set_device(local_rank)
+        
+        # Make sure all processes are ready before continuing
+        dist.barrier()
 
     log.info(args)
 
@@ -383,6 +387,8 @@ def main():
         latent_dtype=dtype,
         latent_device=args.device,
         latent_framework=args.latent_framework,
+        rank=dist.get_rank() if dist.is_initialized() else 0,
+        world_size=dist.get_world_size() if dist.is_initialized() else 1,
         **kwargs,
     )
     final_results = {

@@ -41,9 +41,21 @@ class Coco(dataset.Dataset):
         **kwargs,
     ):
         super().__init__()
-        self.captions_df = pd.read_csv(
-            f"{data_path}/captions/captions.tsv", sep="\t")
-        self.sampler = DistributedSampler(self.captions_df, num_replicas=world_size, rank=rank)
+        # Load full dataset first
+        self.captions_df = pd.read_csv(f"{data_path}/captions/captions.tsv", sep="\t")
+        
+        # Setup distributed sampler
+        if world_size > 1:
+            self.sampler = DistributedSampler(
+                range(len(self.captions_df)), 
+                num_replicas=world_size,
+                rank=rank,
+                shuffle=False
+            )
+            # Filter dataframe based on rank and world_size
+            indices = list(self.sampler)
+            self.captions_df = self.captions_df.iloc[indices].reset_index(drop=True)
+
         self.image_size = image_size
         self.preprocessed_dir = os.path.abspath(f"{data_path}/preprocessed/")
         self.img_dir = os.path.abspath(f"{data_path}/validation/data/")
