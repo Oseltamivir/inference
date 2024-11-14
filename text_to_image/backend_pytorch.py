@@ -276,13 +276,15 @@ class BackendPytorch(backend.Backend):
             negative_prompt_embeds = torch.concat(
                 negative_prompt_embeds_list, dim=-1)
 
+# ...existing code...
         if pipe.text_encoder_2 is not None:
             prompt_embeds = prompt_embeds.to(
-                dtype=pipe.text_encoder_2.dtype, device=device
+                dtype=pipe.text_encoder_2.module.dtype, device=device
             )
         else:
             prompt_embeds = prompt_embeds.to(
-                dtype=pipe.unet.dtype, device=device)
+                dtype=pipe.unet.module.dtype, device=device)
+# ...existing code...
 
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps
