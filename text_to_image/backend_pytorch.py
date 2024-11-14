@@ -12,6 +12,26 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("backend-pytorch")
 
 
+class DDPWrapper(DDP):
+    """Wrapper for DDP that preserves attribute access to the underlying model"""
+    def __init__(self, model, *args, **kwargs):
+        super().__init__(model, *args, **kwargs)
+        self.module = model  # Keep reference to unwrapped model
+        
+        # Store references to important attributes
+        self.config = getattr(model, 'config', None)
+        self.add_embedding = getattr(model, 'add_embedding', None)
+        self.dtype = model.dtype if hasattr(model, 'dtype') else None
+        
+    def __getattr__(self, name):
+        # Try to get the attribute from the wrapped module first
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            # If not found in DDP, try the original module
+            return getattr(self.module, name)
+
+
 class BackendPytorch(backend.Backend):
     def __init__(
         self,
@@ -86,12 +106,12 @@ class BackendPytorch(backend.Backend):
 
         self.pipe.to(self.device)
         
-        # Store UNet config before wrapping with DDP
+        # Use custom wrapper for DDP
         if dist.is_available() and dist.is_initialized():
-            self.unet_config = self.pipe.unet.config
-            self.pipe.unet = DDP(self.pipe.unet, device_ids=[torch.cuda.current_device()])
-            # Monkey patch the config access
-            setattr(self.pipe.unet, 'config', self.unet_config)
+            self.pipe.unet = DDPWrapper(
+                self.pipe.unet, 
+                device_ids=[torch.cuda.current_device()]
+            )
         
         self.negative_prompt_tokens = self.pipe.tokenizer(
             self.convert_prompt(self.negative_prompt, self.pipe.tokenizer),
