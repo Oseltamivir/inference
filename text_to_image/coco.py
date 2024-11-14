@@ -60,7 +60,7 @@ class Coco(dataset.Dataset):
         self.latent_device = latent_device if torch.cuda.is_available() else "cpu"
         if latent_framework == "torch":
             self.latents = (
-                torch.load(f"{data_path}/latents/latents.pt")
+                torch.load(f"{data_path}/latents/latents.pt", weights_only=True)
                 .to(latent_dtype)
                 .to(latent_device)
             )

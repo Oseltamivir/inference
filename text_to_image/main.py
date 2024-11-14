@@ -335,17 +335,13 @@ class QueueRunner(RunnerBase):
 def main():
     args = get_args()
 
-    # Initialize distributed environment using environment variables
-    rank = int(os.getenv("RANK", "0"))
-    world_size = int(os.getenv("WORLD_SIZE", "1"))
-    dist_url = "env://"
-
-    dist.init_process_group(backend='nccl', init_method=dist_url,
-                            world_size=world_size, rank=rank)
+    # Remove or update initialization if not using distributed arguments
+    # dist.init_process_group(backend='nccl', init_method=dist_url,
+    #                         world_size=world_size, rank=rank)
 
     # Set device based on local rank
-    local_rank = int(os.getenv("LOCAL_RANK", "0"))
-    torch.cuda.set_device(local_rank)
+    # local_rank = int(os.getenv("LOCAL_RANK", "0"))
+    # torch.cuda.set_device(local_rank)
 
     log.info(args)
 

@@ -276,6 +276,12 @@ class BackendPytorch(backend.Backend):
             negative_prompt_embeds = torch.concat(
                 negative_prompt_embeds_list, dim=-1)
 
+        if prompt_embeds is not None:
+            prompt_embeds = prompt_embeds.to(dtype=self.dtype, device=device)
+        
+        if negative_prompt_embeds is not None:
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.dtype, device=device)
+
 # ...existing code...
             if pipe.text_encoder_2 is not None:
                 prompt_embeds = prompt_embeds.to(
