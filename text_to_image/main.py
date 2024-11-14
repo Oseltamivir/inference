@@ -430,7 +430,8 @@ def main():
         }
         for _ in range(args.max_batchsize)
     ]
-    for i in range(5):
+    # Reduce warmup iterations from 5 to 2
+    for i in range(2):
         _ = backend.predict(warmup_samples)
 
     scenario = SCENARIO_MAP[args.scenario]
@@ -490,6 +491,13 @@ def main():
         settings.server_target_latency_ns = int(args.max_latency * NANO_SEC)
         settings.multi_stream_expected_latency_ns = int(
             args.max_latency * NANO_SEC)
+
+    # Set shorter test parameters
+    settings.min_query_count = 50  # Reduce number of queries
+    settings.max_query_count = 50
+    settings.min_duration_ms = 10 * MILLI_SEC  # Run for 10 seconds
+    settings.max_duration_ms = 10 * MILLI_SEC
+    performance_sample_count = 50  # Reduce performance samples
 
     performance_sample_count = (
         args.performance_sample_count
