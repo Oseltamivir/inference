@@ -88,9 +88,12 @@ class BackendPytorch(backend.Backend):
 
         self.pipe.to(self.device)
         
-        # Wrap with DDP
+        # Wrap individual modules with DDP
         if dist.is_available() and dist.is_initialized():
-            self.pipe = DDP(self.pipe, device_ids=[torch.cuda.current_device()])
+            self.pipe.unet = DDP(self.pipe.unet, device_ids=[torch.cuda.current_device()])
+            self.pipe.text_encoder = DDP(self.pipe.text_encoder, device_ids=[torch.cuda.current_device()])
+            if hasattr(self.pipe, 'text_encoder_2') and self.pipe.text_encoder_2 is not None:
+                self.pipe.text_encoder_2 = DDP(self.pipe.text_encoder_2, device_ids=[torch.cuda.current_device()])
         
         self.negative_prompt_tokens = self.pipe.tokenizer(
             self.convert_prompt(self.negative_prompt, self.pipe.tokenizer),
