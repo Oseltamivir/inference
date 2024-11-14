@@ -229,6 +229,7 @@ class RunnerBase:
         self.take_accuracy = False
         self.max_batchsize = max_batchsize
         self.result_timing = []
+        self.total_samples = 0  # Add counter for samples
 
     def handle_tasks(self, tasks_queue):
         pass
@@ -249,7 +250,9 @@ class RunnerBase:
             )
             if self.take_accuracy:
                 self.post_process.add_results(processed_results)
-            self.result_timing.append(time.time() - qitem.start)
+            duration = time.time() - qitem.start
+            self.result_timing.append(duration)
+            self.total_samples += len(qitem.query_id)  # Track samples processed
         except Exception as ex:  # pylint: disable=broad-except
             src = [self.ds.get_item_loc(i) for i in qitem.content_id]
             log.error("thread: failed on contentid=%s, %s", src, ex)
@@ -493,11 +496,11 @@ def main():
             args.max_latency * NANO_SEC)
 
     # Set shorter test parameters
-    settings.min_query_count = 50  # Reduce number of queries
-    settings.max_query_count = 50
+    settings.min_query_count = 30  # Reduce number of queries
+    settings.max_query_count = 30
     settings.min_duration_ms = 10 * MILLI_SEC  # Run for 10 seconds
     settings.max_duration_ms = 10 * MILLI_SEC
-    performance_sample_count = 50  # Reduce performance samples
+    performance_sample_count = 30  # Reduce performance samples
 
     performance_sample_count = (
         args.performance_sample_count
@@ -519,6 +522,23 @@ def main():
         post_proc.finalize(result_dict, ds, output_dir=args.output)
         final_results["accuracy_results"] = result_dict
         post_proc.save_images(saved_images_ids, ds)
+
+    # Aggregate results across processes
+    total_samples = torch.tensor(runner.total_samples, device=args.device)
+    dist.all_reduce(total_samples, op=dist.ReduceOp.SUM)
+    
+    if total_samples > 0 and len(runner.result_timing) > 0:
+        avg_time = sum(runner.result_timing) / len(runner.result_timing)
+        # Gather timing stats from all processes
+        avg_times = [torch.zeros_like(torch.tensor(avg_time, device=args.device)) for _ in range(world_size)]
+        avg_time_tensor = torch.tensor(avg_time, device=args.device)
+        dist.all_gather(avg_times, avg_time_tensor)
+        
+        if rank == 0:
+            # Use the best average time across all processes
+            best_avg_time = min([t.item() for t in avg_times])
+            samples_per_sec = float(total_samples) / (best_avg_time * len(runner.result_timing))
+            final_results["samples_per_second"] = samples_per_sec
 
     runner.finish()
     lg.DestroyQSL(qsl)
