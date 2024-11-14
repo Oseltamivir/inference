@@ -41,21 +41,9 @@ class Coco(dataset.Dataset):
         **kwargs,
     ):
         super().__init__()
-        # Load full dataset first
-        self.captions_df = pd.read_csv(f"{data_path}/captions/captions.tsv", sep="\t")
-        
-        # Setup distributed sampler
-        if world_size > 1:
-            self.sampler = DistributedSampler(
-                range(len(self.captions_df)), 
-                num_replicas=world_size,
-                rank=rank,
-                shuffle=False
-            )
-            # Filter dataframe based on rank and world_size
-            indices = list(self.sampler)
-            self.captions_df = self.captions_df.iloc[indices].reset_index(drop=True)
-
+        self.captions_df = pd.read_csv(
+            f"{data_path}/captions/captions.tsv", sep="\t")
+        self.sampler = DistributedSampler(self.captions_df, num_replicas=world_size, rank=rank)
         self.image_size = image_size
         self.preprocessed_dir = os.path.abspath(f"{data_path}/preprocessed/")
         self.img_dir = os.path.abspath(f"{data_path}/validation/data/")
@@ -72,7 +60,7 @@ class Coco(dataset.Dataset):
         self.latent_device = latent_device if torch.cuda.is_available() else "cpu"
         if latent_framework == "torch":
             self.latents = (
-                torch.load(f"{data_path}/latents/latents.pt", weights_only=True)
+                torch.load(f"{data_path}/latents/latents.pt")
                 .to(latent_dtype)
                 .to(latent_device)
             )

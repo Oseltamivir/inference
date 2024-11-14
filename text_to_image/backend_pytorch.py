@@ -71,7 +71,6 @@ class BackendPytorch(backend.Backend):
                 variant="fp16" if (self.dtype == torch.float16) else None,
                 torch_dtype=self.dtype,
             )
-            # self.pipe.unet = torch.compile(self.pipe.unet, mode="reduce-overhead", fullgraph=True)
         else:
             self.scheduler = EulerDiscreteScheduler.from_pretrained(
                 os.path.join(self.model_path, "checkpoint_scheduler"),
@@ -84,26 +83,12 @@ class BackendPytorch(backend.Backend):
                 add_watermarker=False,
                 torch_dtype=self.dtype,
             )
-            # self.pipe.unet = torch.compile(self.pipe.unet, mode="reduce-overhead", fullgraph=True)
 
-        # Set device based on local rank if using distributed
-        if dist.is_available() and dist.is_initialized():
-            local_rank = int(os.getenv("LOCAL_RANK", "0"))
-            self.device = f"cuda:{local_rank}"
-            torch.cuda.set_device(self.device)
-
-        # Move model to device before DDP wrapping
         self.pipe.to(self.device)
         
-        # Wrap individual modules with DDP
+        # Only wrap UNet with DDP
         if dist.is_available() and dist.is_initialized():
-            self.pipe.unet = DDP(self.pipe.unet, device_ids=[local_rank])
-            self.pipe.text_encoder = DDP(self.pipe.text_encoder, device_ids=[local_rank])
-            if hasattr(self.pipe, 'text_encoder_2') and self.pipe.text_encoder_2 is not None:
-                self.pipe.text_encoder_2 = DDP(self.pipe.text_encoder_2, device_ids=[local_rank])
-            
-            # Make sure all processes are synced
-            dist.barrier()
+            self.pipe.unet = DDP(self.pipe.unet, device_ids=[torch.cuda.current_device()])
         
         self.negative_prompt_tokens = self.pipe.tokenizer(
             self.convert_prompt(self.negative_prompt, self.pipe.tokenizer),
@@ -286,12 +271,13 @@ class BackendPytorch(backend.Backend):
             negative_prompt_embeds = torch.concat(
                 negative_prompt_embeds_list, dim=-1)
 
-        # Always use self.dtype for tensor conversions
-        prompt_embeds = prompt_embeds.to(dtype=self.dtype, device=device)
-        negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.dtype, device=device)
-        pooled_prompt_embeds = pooled_prompt_embeds.to(dtype=self.dtype, device=device)
-        if negative_pooled_prompt_embeds is not None:
-            negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.to(dtype=self.dtype, device=device)
+        if pipe.text_encoder_2 is not None:
+            prompt_embeds = prompt_embeds.to(
+                dtype=pipe.text_encoder_2.dtype, device=device
+            )
+        else:
+            prompt_embeds = prompt_embeds.to(
+                dtype=pipe.unet.dtype, device=device)
 
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps
@@ -305,7 +291,16 @@ class BackendPytorch(backend.Backend):
             # duplicate unconditional embeddings for each generation per
             # prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.dtype, device=device)
+
+            if pipe.text_encoder_2 is not None:
+                negative_prompt_embeds = negative_prompt_embeds.to(
+                    dtype=pipe.text_encoder_2.dtype, device=device
+                )
+            else:
+                negative_prompt_embeds = negative_prompt_embeds.to(
+                    dtype=pipe.unet.dtype, device=device
+                )
+
             negative_prompt_embeds = negative_prompt_embeds.repeat(
                 1, num_images_per_prompt, 1
             )
