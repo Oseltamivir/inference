@@ -86,9 +86,12 @@ class BackendPytorch(backend.Backend):
 
         self.pipe.to(self.device)
         
-        # Only wrap UNet with DDP
+        # Store UNet config before wrapping with DDP
         if dist.is_available() and dist.is_initialized():
+            self.unet_config = self.pipe.unet.config
             self.pipe.unet = DDP(self.pipe.unet, device_ids=[torch.cuda.current_device()])
+            # Monkey patch the config access
+            setattr(self.pipe.unet, 'config', self.unet_config)
         
         self.negative_prompt_tokens = self.pipe.tokenizer(
             self.convert_prompt(self.negative_prompt, self.pipe.tokenizer),
