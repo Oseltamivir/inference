@@ -170,10 +170,10 @@ def get_args():
         type=int,
         help="mlperf multi-stream samples per query",
     )
-    # Add distributed arguments
-    parser.add_argument("--world_size", type=int, default=1, help="Number of nodes for distributed training")
-    parser.add_argument("--rank", type=int, default=0, help="Rank of the node")
-    parser.add_argument("--dist_url", type=str, default="env://", help="URL for distributed setup")
+    # Remove distributed arguments
+    # parser.add_argument("--world_size", type=int, default=1, help="Number of nodes for distributed training")
+    # parser.add_argument("--rank", type=int, default=0, help="Rank of the node")
+    # parser.add_argument("--dist_url", type=str, default="env://", help="URL for distributed setup")
     args = parser.parse_args()
 
     # don't use defaults in argparser. Instead we default to a dict, override that with a profile
@@ -335,12 +335,17 @@ class QueueRunner(RunnerBase):
 def main():
     args = get_args()
 
-    # Initialize distributed environment
-    dist.init_process_group(backend='nccl', init_method=args.dist_url,
-                            world_size=args.world_size, rank=args.rank)
+    # Initialize distributed environment using environment variables
+    rank = int(os.getenv("RANK", "0"))
+    world_size = int(os.getenv("WORLD_SIZE", "1"))
+    dist_url = "env://"
 
-    # Set device
-    torch.cuda.set_device(args.rank % torch.cuda.device_count())
+    dist.init_process_group(backend='nccl', init_method=dist_url,
+                            world_size=world_size, rank=rank)
+
+    # Set device based on local rank
+    local_rank = int(os.getenv("LOCAL_RANK", "0"))
+    torch.cuda.set_device(local_rank)
 
     log.info(args)
 

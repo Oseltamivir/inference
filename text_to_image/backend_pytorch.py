@@ -39,10 +39,6 @@ class BackendPytorch(backend.Backend):
         else:
             self.dtype = torch.float32
 
-        if torch.cuda.is_available():
-            self.local_rank = 0
-            self.world_size = 1
-
         self.guidance = guidance
         self.steps = steps
         self.negative_prompt = negative_prompt
@@ -94,7 +90,7 @@ class BackendPytorch(backend.Backend):
         
         # Wrap with DDP
         if dist.is_available() and dist.is_initialized():
-            self.pipe = DDP(self.pipe, device_ids=[dist.get_rank() % torch.cuda.device_count()])
+            self.pipe = DDP(self.pipe, device_ids=[torch.cuda.current_device()])
         
         self.negative_prompt_tokens = self.pipe.tokenizer(
             self.convert_prompt(self.negative_prompt, self.pipe.tokenizer),
