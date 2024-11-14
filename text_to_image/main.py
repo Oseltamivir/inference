@@ -20,6 +20,7 @@ from queue import Queue
 import mlperf_loadgen as lg
 import numpy as np
 import torch
+import torch.distributed as dist
 
 import dataset
 import coco
@@ -169,6 +170,10 @@ def get_args():
         type=int,
         help="mlperf multi-stream samples per query",
     )
+    # Add distributed arguments
+    parser.add_argument("--world_size", type=int, default=1, help="Number of nodes for distributed training")
+    parser.add_argument("--rank", type=int, default=0, help="Rank of the node")
+    parser.add_argument("--dist_url", type=str, default="env://", help="URL for distributed setup")
     args = parser.parse_args()
 
     # don't use defaults in argparser. Instead we default to a dict, override that with a profile
@@ -329,6 +334,13 @@ class QueueRunner(RunnerBase):
 
 def main():
     args = get_args()
+
+    # Initialize distributed environment
+    dist.init_process_group(backend='nccl', init_method=args.dist_url,
+                            world_size=args.world_size, rank=args.rank)
+
+    # Set device
+    torch.cuda.set_device(args.rank % torch.cuda.device_count())
 
     log.info(args)
 
@@ -506,6 +518,8 @@ def main():
         with open("results.json", "w") as f:
             json.dump(final_results, f, sort_keys=True, indent=4)
 
+    # Ensure cleanup
+    dist.destroy_process_group()
 
 if __name__ == "__main__":
     main()

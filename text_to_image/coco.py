@@ -17,6 +17,7 @@ import dataset
 import torch
 from tools.clip.clip_encoder import CLIPEncoder
 from tools.fid.fid_score import compute_fid
+from torch.utils.data import DistributedSampler
 
 
 logging.basicConfig(level=logging.INFO)
@@ -35,11 +36,14 @@ class Coco(dataset.Dataset):
         latent_dtype=torch.float32,
         latent_device="cuda",
         latent_framework="torch",
+        rank=0,
+        world_size=1,
         **kwargs,
     ):
         super().__init__()
         self.captions_df = pd.read_csv(
             f"{data_path}/captions/captions.tsv", sep="\t")
+        self.sampler = DistributedSampler(self.captions_df, num_replicas=world_size, rank=rank)
         self.image_size = image_size
         self.preprocessed_dir = os.path.abspath(f"{data_path}/preprocessed/")
         self.img_dir = os.path.abspath(f"{data_path}/validation/data/")

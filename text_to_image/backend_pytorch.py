@@ -5,6 +5,8 @@ import logging
 import backend
 from diffusers import StableDiffusionXLPipeline
 from diffusers import EulerDiscreteScheduler
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("backend-pytorch")
@@ -89,8 +91,11 @@ class BackendPytorch(backend.Backend):
             # self.pipe.unet = torch.compile(self.pipe.unet, mode="reduce-overhead", fullgraph=True)
 
         self.pipe.to(self.device)
-        # self.pipe.set_progress_bar_config(disable=True)
-
+        
+        # Wrap with DDP
+        if dist.is_available() and dist.is_initialized():
+            self.pipe = DDP(self.pipe, device_ids=[dist.get_rank() % torch.cuda.device_count()])
+        
         self.negative_prompt_tokens = self.pipe.tokenizer(
             self.convert_prompt(self.negative_prompt, self.pipe.tokenizer),
             padding="max_length",
